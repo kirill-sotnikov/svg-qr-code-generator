@@ -1,0 +1,10 @@
+tmp/
+node_modules/
+dist/
+*.csv-[0-9]*/
+.DS_Store
+yarn-error.log
+verification-output/
+verification-success/
+compatibility-check/
+rendered-*/
