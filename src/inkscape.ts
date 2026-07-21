@@ -34,12 +34,27 @@ export async function getInkscapeVersion(bin: string): Promise<string> {
   return version;
 }
 
-export async function convertAndCombineSvg(bin: string, input: string, output: string): Promise<void> {
+export async function releaseQrClipsSvg(bin: string, input: string, output: string): Promise<void> {
   await run(bin, [
     input,
     `--export-filename=${output}`,
     "--export-plain-svg",
-    "--actions=select-all:all;object-to-path;path-combine;export-do",
+    "--actions=select-all:all;object-release-clip;export-do",
+  ]);
+}
+
+export async function deleteSquaresAndUnionSvg(
+  bin: string,
+  input: string,
+  output: string,
+  squareIds: string[],
+): Promise<void> {
+  if (!squareIds.length) throw new Error("No oversized service squares were selected for deletion");
+  await run(bin, [
+    input,
+    `--export-filename=${output}`,
+    "--export-plain-svg",
+    `--actions=select-by-id:${squareIds.join(",")};delete-selection;select-all:all;path-union;export-do`,
   ]);
 }
 

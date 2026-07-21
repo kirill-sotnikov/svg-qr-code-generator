@@ -7,7 +7,8 @@ export interface CsvRecord {
 export type ErrorStage =
   | "input"
   | "generate"
-  | "flatten"
+  | "release"
+  | "cleanup"
   | "convert"
   | "structure"
   | "rasterize"

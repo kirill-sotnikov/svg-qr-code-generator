@@ -10,6 +10,7 @@ import { ensureHttpProtocol } from "../src/pipeline.js";
 import { generateQrSvg } from "../src/qr.js";
 import {
   closeKnownQrPathData,
+  findOversizedSquareIds,
   flattenQrCodeStylingSvg,
   inspectSvg,
   pathDataIsClosed,
@@ -158,6 +159,20 @@ describe("specialized qr-code-styling SVG flattening", () => {
 });
 
 describe("final SVG and payload validation", () => {
+  it("finds service squares larger than a QR module after Clip Release", () => {
+    const released = `<svg xmlns="http://www.w3.org/2000/svg">
+      <rect id="background" width="300" height="300" fill="transparent"/>
+      <rect id="dot-carrier" width="300" height="300" fill="#000000"/>
+      <rect id="finder-carrier" width="84" height="84" fill="#000000"/>
+      <rect id="module-a" width="12" height="12"/>
+      <rect id="module-b" width="12" height="12"/>
+    </svg>`;
+    expect(findOversizedSquareIds(released)).toEqual({
+      ids: ["background", "dot-carrier", "finder-carrier"],
+      moduleSize: 12,
+    });
+  });
+
   it("adds http only when the URL has no HTTP protocol", () => {
     expect(ensureHttpProtocol("example.com/a")).toBe("http://example.com/a");
     expect(ensureHttpProtocol("http://example.com/a")).toBe("http://example.com/a");

@@ -2,9 +2,15 @@ import { constants } from "node:fs";
 import { access, copyFile, mkdir, mkdtemp, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { basename, dirname, join } from "node:path";
 import { decodeQrPng, payloadMatches } from "./decode.js";
-import { convertAndCombineSvg, getInkscapeVersion, InkscapeError, rasterizeSvg } from "./inkscape.js";
+import {
+  deleteSquaresAndUnionSvg,
+  getInkscapeVersion,
+  InkscapeError,
+  rasterizeSvg,
+  releaseQrClipsSvg,
+} from "./inkscape.js";
 import { generateQrSvg } from "./qr.js";
-import { flattenQrCodeStylingSvg, inspectSvg } from "./svg.js";
+import { findOversizedSquareIds, inspectSvg } from "./svg.js";
 import type { BatchOptions, CsvRecord, ErrorStage, ReportRow, SvgInspection } from "./types.js";
 
 class StageError extends Error {
@@ -45,7 +51,7 @@ async function saveFailure(
   await mkdir(failedDirectory, { recursive: true });
   const copies: Array<[string, string]> = [
     [paths.raw ?? "", "source.svg"],
-    [paths.prepared ?? "", "prepared.svg"],
+    [paths.released ?? "", "released.svg"],
     [paths.converted ?? "", "converted.svg"],
     [paths.preview ?? "", `preview-${options.size}.png`],
   ];
@@ -81,7 +87,7 @@ export async function processRecord(
   const tempDirectory = await mkdtemp(join(options.outputDirectory, "tmp", `${record.id}-`));
   const paths = {
     raw: rawPath,
-    prepared: join(tempDirectory, "prepared.svg"),
+    released: join(tempDirectory, "released.svg"),
     converted: join(tempDirectory, "converted.svg"),
     preview: join(tempDirectory, `preview-${options.size}.png`),
   };
@@ -97,14 +103,22 @@ export async function processRecord(
     log(index, total, record.id, `generating raw/${record.fileName}`);
     const raw = await atStage("generate", () => generateQrSvg(expectedUrl, options.size));
     await writeFile(rawPath, raw);
-    log(index, total, record.id, "flattening clip paths");
-    const prepared = await atStage("flatten", async () => flattenQrCodeStylingSvg(raw));
-    const preparedViewBox = inspectPreparedSvg(prepared);
-    await writeFile(paths.prepared, prepared);
-    log(index, total, record.id, "converting objects and combining paths with Inkscape");
-    await atStage("convert", () => convertAndCombineSvg(options.inkscapeBin, paths.prepared, paths.converted));
+    const rawViewBox = readViewBox(raw);
+    log(index, total, record.id, "releasing clip paths with Inkscape");
+    await atStage("release", () => releaseQrClipsSvg(options.inkscapeBin, paths.raw, paths.released));
+    const released = await atStage("release", () => readFile(paths.released, "utf8"));
+    inspectReleasedSvg(released, rawViewBox);
+    const oversizedSquares = await atStage("cleanup", async () => findOversizedSquareIds(released));
+    log(index, total, record.id, `deleting ${oversizedSquares.ids.length} service squares larger than ${oversizedSquares.moduleSize}px`);
+    log(index, total, record.id, "converting objects and applying path union with Inkscape");
+    await atStage("convert", () => deleteSquaresAndUnionSvg(
+      options.inkscapeBin,
+      paths.released,
+      paths.converted,
+      oversizedSquares.ids,
+    ));
     log(index, total, record.id, "validating Plain SVG");
-    inspection = await atStage("structure", async () => inspectSvg(await readFile(paths.converted, "utf8"), preparedViewBox));
+    inspection = await atStage("structure", async () => inspectSvg(await readFile(paths.converted, "utf8"), rawViewBox));
     if (inspection.containsClipPath || inspection.containsMask || !inspection.allPathsClosed) {
       throw new StageError("structure", "Final SVG contains clipping, masking, or open production subpaths");
     }
@@ -133,13 +147,17 @@ export async function processRecord(
   }
 }
 
-function inspectPreparedSvg(svg: string): string {
-  if (/<clipPath\b|\bclip-path\s*=/.test(svg) || /<mask\b|\bmask\s*=/.test(svg)) {
-    throw new Error("Prepared SVG still contains clipping or masking");
-  }
+function readViewBox(svg: string): string {
   const viewBox = /\bviewBox=["']([^"']+)["']/.exec(svg)?.[1] || "";
-  if (!viewBox) throw new Error("Prepared SVG lost its viewBox");
+  if (!viewBox) throw new Error("SVG has no viewBox");
   return viewBox;
+}
+
+function inspectReleasedSvg(svg: string, expectedViewBox: string): void {
+  if (/<clipPath\b|<mask\b|\b(?:clip-path|mask)\s*(?:=|:)\s*["']?\s*url\(/.test(svg)) {
+    throw new Error("Clip Release output still contains clipping or masking");
+  }
+  if (readViewBox(svg) !== expectedViewBox) throw new Error("Clip Release changed the SVG viewBox");
 }
 
 function makeRow(

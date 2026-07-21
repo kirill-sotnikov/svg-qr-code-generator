@@ -1,6 +1,6 @@
 # QR Code Batch Generator
 
-CLI-программа на TypeScript пакетно создаёт стилизованные SVG QR-коды из CSV, раскрывает специфичные для `qr-code-styling` clipping paths, преобразует и объединяет геометрию через Inkscape, а затем проверяет каждый результат декодированием ZXing.
+CLI-программа на TypeScript пакетно создаёт стилизованные SVG QR-коды из CSV, выполняет Clip Release и Path Union через Inkscape, а затем проверяет каждый результат декодированием ZXing.
 
 Файл считается успешным только тогда, когда PNG, растеризованный **из итогового Plain SVG** в размере `--size × --size`, декодируется в строку, точно равную ожидаемому URL. Для URL без HTTP(S)-схемы ожидаемое значение получает префикс `http://`. Для устойчивости ZXing сначала анализирует нативные пиксели, а для очень крупного изображения при необходимости — его уменьшенные sharp-представления без изменения пропорций. PNG служит только для проверки; производственный результат — SVG.
 
@@ -106,7 +106,7 @@ products-<timestamp>/
   failed/
     product-002/
       source.svg
-      prepared.svg
+      released.svg
       converted.svg
       preview-{size}.png
       error.json
@@ -124,12 +124,17 @@ products-<timestamp>/
 
 ## Обработка SVG
 
-Обработчик XML раскрывает только известную структуру `qr-code-styling`: цветовые прямоугольники с `clip-path` и соответствующие `clipPath` вида `clip-path-dot-color-*`, `clip-path-corners-square-color-*` и `clip-path-corners-dot-color-*`. Он переносит заливку, прозрачность, transform и правила заливки, превращает `clip-rule="evenodd"` в `fill-rule="evenodd"`, удаляет прозрачный фон, маски, clipping paths и пустые `defs`. Произвольная неизвестная clipping-структура приводит к ошибке.
-
-Известные открытые записи путей `extra-rounded` замыкаются перед Inkscape; произвольные пути автоматически не изменяются. Затем Inkscape выполняет:
+Сразу после `qr-code-styling` исходный SVG без XML-раскрытия clipping paths передаётся в Inkscape. Первый проход выполняет:
 
 ```text
-select-all:all → object-to-path → path-combine → export Plain SVG
+select-all:all → object-release-clip → export Plain SVG
+```
+
+В освобождённом SVG минимальный квадрат считается размером QR-модуля. Программа находит ID всех служебных квадратов больше модуля, включая прозрачный носитель фона. Второй проход Inkscape выполняет:
+
+```text
+select-by-id:<service-square-ids> → delete-selection →
+select-all:all → path-union → export Plain SVG
 ```
 
 После экспорта программа повторно разбирает XML и запрещает clip paths, masks, filters, images, `use`, непреобразованные фигуры, stroke и незамкнутые производственные subpaths. Декодирование итогового SVG дополнительно проверяет сохранность finder patterns, их отверстий и зазоров.
@@ -157,7 +162,7 @@ yarn test:unit
 INKSCAPE_BIN=/path/to/inkscape yarn test:integration
 ```
 
-Интеграционные тесты требуют Inkscape и завершаются ошибкой, если бинарный файл недоступен или не запускается. Они проверяют реальное раскрытие clipping paths, `object-to-path`, объединение в один compound path, Plain SVG, сохранение finder patterns, растеризацию, точное декодирование, публикацию только после проверки, несовпадение URL и защиту от перезаписи.
+Интеграционные тесты требуют Inkscape и завершаются ошибкой, если бинарный файл недоступен или не запускается. Они проверяют Clip Release, удаление служебных квадратов, Path Union, Plain SVG, растеризацию, точное декодирование, публикацию только после проверки, несовпадение URL и защиту от перезаписи.
 
 ## Вставка SVG в template
 

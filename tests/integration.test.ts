@@ -7,10 +7,10 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import sharp from "sharp";
 import { parseCsv } from "../src/csv.js";
 import { decodeQrPng, payloadMatches } from "../src/decode.js";
-import { convertAndCombineSvg, rasterizeSvg } from "../src/inkscape.js";
+import { deleteSquaresAndUnionSvg, rasterizeSvg, releaseQrClipsSvg } from "../src/inkscape.js";
 import { runBatch } from "../src/pipeline.js";
 import { generateQrSvg } from "../src/qr.js";
-import { flattenQrCodeStylingSvg, inspectSvg } from "../src/svg.js";
+import { findOversizedSquareIds, inspectSvg } from "../src/svg.js";
 
 const macBin = "/opt/homebrew/bin/inkscape";
 const inkscapeBin = process.env.INKSCAPE_BIN || (existsSync(macBin) ? macBin : "inkscape");
@@ -31,7 +31,7 @@ describe("Inkscape end-to-end pipeline", () => {
     expect(version).toContain("Inkscape");
   });
 
-  it("flattens, combines, exports, rasterizes and decodes an exact payload", async () => {
+  it("releases clips, removes service squares, unions paths and decodes an exact payload", async () => {
     const outputDirectory = join(root, "batch");
     const sourceUrl = "example.com/catalog/%D1%82%D0%B5%D1%81%D1%82?source=qr";
     const expectedUrl = `http://${sourceUrl}`;
@@ -57,7 +57,7 @@ describe("Inkscape end-to-end pipeline", () => {
     expect(finalSvg).not.toMatch(/<clipPath\b|\bclip-path=/);
     expect(finalSvg).not.toMatch(/<rect\b|<circle\b/);
     expect(inspectSvg(finalSvg).allPathsClosed).toBe(true);
-    expect((finalSvg.match(/[Mm]/g) || []).length).toBeGreaterThan(3); // finder holes and disconnected islands survived combine
+    expect((finalSvg.match(/[Mm]/g) || []).length).toBeGreaterThan(3); // finder holes and disconnected islands survived union
 
     const tempDirectories = await readdir(join(outputDirectory, "tmp"));
     const preview = join(outputDirectory, "tmp", tempDirectories[0] ?? "", "preview-300.png");
@@ -69,25 +69,27 @@ describe("Inkscape end-to-end pipeline", () => {
     expect(diagnosticDirs).toContain('"status": "success"');
   }, 60_000);
 
-  it("preserves rounded modules that touch only at their corners", async () => {
-    const work = join(root, "corner-touching-modules");
+  it("passes qr-code-styling output directly through Clip Release and Path Union", async () => {
+    const work = join(root, "clip-release-union");
     await mkdir(work, { recursive: true });
-    const prepared = join(work, "prepared.svg");
+    const raw = join(work, "raw.svg");
+    const released = join(work, "released.svg");
     const converted = join(work, "converted.svg");
-    await writeFile(prepared, flattenQrCodeStylingSvg(await generateQrSvg("http://XTAG.PRO/NWZM-NWCQ", 800)));
-    await convertAndCombineSvg(inkscapeBin, prepared, converted);
-
-    const preparedPixels = await sharp(prepared).flatten({ background: "#fff" }).greyscale().raw().toBuffer();
-    const convertedPixels = await sharp(converted).flatten({ background: "#fff" }).greyscale().raw().toBuffer();
-    let removedBlackPixels = 0;
-    for (let index = 0; index < preparedPixels.length; index += 1) {
-      if ((preparedPixels[index] ?? 255) < 32 && (convertedPixels[index] ?? 0) > 223) removedBlackPixels += 1;
-    }
-
-    expect(removedBlackPixels).toBe(0);
-    expect(convertedPixels[176 * 800 + 432]).toBeLessThan(32);
-    expect(convertedPixels[208 * 800 + 464]).toBeLessThan(32);
-    expect(inspectSvg(await readFile(converted, "utf8")).pathCount).toBe(1);
+    const png = join(work, "preview.png");
+    const payload = "http://XTAG.PRO/NWZM-NWCQ";
+    await writeFile(raw, await generateQrSvg(payload, 800));
+    await releaseQrClipsSvg(inkscapeBin, raw, released);
+    const releasedSvg = await readFile(released, "utf8");
+    expect(releasedSvg).not.toMatch(/<clipPath\b|\bclip-path=["']url\(/);
+    const oversizedSquares = findOversizedSquareIds(releasedSvg);
+    expect(oversizedSquares.moduleSize).toBe(32);
+    expect(oversizedSquares.ids.length).toBeGreaterThan(0);
+    await deleteSquaresAndUnionSvg(inkscapeBin, released, converted, oversizedSquares.ids);
+    const finalSvg = await readFile(converted, "utf8");
+    expect(inspectSvg(finalSvg).pathCount).toBe(1);
+    expect(finalSvg).not.toMatch(/<rect\b|<circle\b|<clipPath\b/);
+    await rasterizeSvg(inkscapeBin, converted, png, 800);
+    expect(await decodeQrPng(png)).toBe(payload);
   }, 30_000);
 
   it("does not overwrite an existing final SVG", async () => {
@@ -109,11 +111,14 @@ describe("Inkscape end-to-end pipeline", () => {
     await mkdir(work, { recursive: true });
     const encodedUrl = "https://example.com/encoded";
     const expectedUrl = "https://example.com/other";
-    const prepared = join(work, "prepared.svg");
+    const raw = join(work, "raw.svg");
+    const released = join(work, "released.svg");
     const converted = join(work, "converted.svg");
     const png = join(work, "preview.png");
-    await writeFile(prepared, flattenQrCodeStylingSvg(await generateQrSvg(encodedUrl)));
-    await convertAndCombineSvg(inkscapeBin, prepared, converted);
+    await writeFile(raw, await generateQrSvg(encodedUrl));
+    await releaseQrClipsSvg(inkscapeBin, raw, released);
+    const oversizedSquares = findOversizedSquareIds(await readFile(released, "utf8"));
+    await deleteSquaresAndUnionSvg(inkscapeBin, released, converted, oversizedSquares.ids);
     await rasterizeSvg(inkscapeBin, converted, png, 300);
     const decoded = await decodeQrPng(png);
     expect(decoded).toBe(encodedUrl);
