@@ -36,6 +36,13 @@ describe("CSV and file names", () => {
     expect(() => parseArguments(["input.csv", "--size=10"])).toThrow(/64 to 4096/);
   });
 
+  it("parses the QR error correction level", () => {
+    expect(parseArguments(["input.csv"]).errorCorrectionLevel).toBe("Q");
+    expect(parseArguments(["input.csv", "--error-correction-level", "H"]).errorCorrectionLevel).toBe("H");
+    expect(parseArguments(["input.csv", "--error-correction-level=Q"]).errorCorrectionLevel).toBe("Q");
+    expect(() => parseArguments(["input.csv", "--error-correction-level", "X"])).toThrow(/L, M, Q, H/);
+  });
+
   it("reads id and URL columns", () => {
     expect(parseCsv("id,url\nproduct-001,https://example.com/a\n")).toEqual([
       { id: "product-001", url: "https://example.com/a", fileName: "product-001.svg" },

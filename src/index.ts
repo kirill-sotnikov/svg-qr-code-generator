@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import { resolve } from "node:path";
+import type { ErrorCorrectionLevel } from "qr-code-styling";
 import { readCsv } from "./csv.js";
 import { defaultOutputDirectory, runBatch } from "./pipeline.js";
 
@@ -9,6 +10,7 @@ interface CliOptions {
   overwrite: boolean;
   diagnostic: boolean;
   size: number;
+  errorCorrectionLevel: ErrorCorrectionLevel;
   outputDirectory?: string;
 }
 
@@ -19,6 +21,7 @@ export function usage(): string {
     "Options:",
     "  --concurrency <n>  Maximum concurrent QR/Inkscape jobs (default: 2)",
     "  --size <n>         SVG QR width and height in pixels (default: 300)",
+    "  --error-correction-level <level>  QR error correction: L, M, Q, or H (default: Q)",
     "  --output-dir <dir>  Use a deterministic output directory instead of <csv>-<timestamp>",
     "  --overwrite         Replace existing final/{id}.svg files",
     "  --diagnostic        Keep per-record temporary files after success",
@@ -32,6 +35,7 @@ export function parseArguments(args: string[]): CliOptions {
   let overwrite = false;
   let diagnostic = false;
   let size = 300;
+  let errorCorrectionLevel: ErrorCorrectionLevel = "Q";
   let outputDirectory: string | undefined;
   for (let index = 0; index < args.length; index += 1) {
     const arg = args[index];
@@ -52,6 +56,14 @@ export function parseArguments(args: string[]): CliOptions {
       const value = args[++index];
       if (!value) throw new Error("--output-dir requires a path");
       outputDirectory = resolve(value);
+    } else if (arg === "--error-correction-level" || arg?.startsWith("--error-correction-level=")) {
+      const rawValue = arg === "--error-correction-level"
+        ? args[++index]
+        : arg.slice("--error-correction-level=".length);
+      if (rawValue !== "L" && rawValue !== "M" && rawValue !== "Q" && rawValue !== "H") {
+        throw new Error("--error-correction-level must be one of: L, M, Q, H");
+      }
+      errorCorrectionLevel = rawValue;
     } else if (arg === "--overwrite") overwrite = true;
     else if (arg === "--diagnostic") diagnostic = true;
     else if (arg?.startsWith("-")) throw new Error(`Unknown option: ${arg}`);
@@ -59,7 +71,7 @@ export function parseArguments(args: string[]): CliOptions {
   }
   if (positional.length !== 1 || !positional[0]) throw new Error(usage());
   return {
-    csvPath: resolve(positional[0]), concurrency, overwrite, diagnostic, size,
+    csvPath: resolve(positional[0]), concurrency, overwrite, diagnostic, size, errorCorrectionLevel,
     ...(outputDirectory ? { outputDirectory } : {}),
   };
 }
@@ -83,6 +95,7 @@ async function main(): Promise<void> {
       diagnostic: cli.diagnostic,
       inkscapeBin: process.env.INKSCAPE_BIN || "inkscape",
       size: cli.size,
+      errorCorrectionLevel: cli.errorCorrectionLevel,
     });
     const success = rows.filter((row) => row.status === "success").length;
     const failed = rows.length - success;

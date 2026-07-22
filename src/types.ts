@@ -1,3 +1,5 @@
+import type { ErrorCorrectionLevel } from "qr-code-styling";
+
 export interface CsvRecord {
   id: string;
   url: string;
@@ -51,4 +53,5 @@ export interface BatchOptions {
   diagnostic: boolean;
   inkscapeBin: string;
   size: number;
+  errorCorrectionLevel: ErrorCorrectionLevel;
 }

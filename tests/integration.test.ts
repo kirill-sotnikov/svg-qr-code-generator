@@ -37,7 +37,7 @@ describe("Inkscape end-to-end pipeline", () => {
     const expectedUrl = `http://${sourceUrl}`;
     const records = parseCsv(`id,url\nproduct-001,${sourceUrl}\n`);
     const rows = await runBatch(records, {
-      csvPath: join(root, "input.csv"), outputDirectory, concurrency: 1, overwrite: false, diagnostic: true, inkscapeBin, size: 300,
+      csvPath: join(root, "input.csv"), outputDirectory, concurrency: 1, overwrite: false, diagnostic: true, inkscapeBin, size: 300, errorCorrectionLevel: "H",
     });
     expect(rows).toHaveLength(1);
     expect(rows[0]?.status).toBe("success");
@@ -82,7 +82,7 @@ describe("Inkscape end-to-end pipeline", () => {
     const releasedSvg = await readFile(released, "utf8");
     expect(releasedSvg).not.toMatch(/<clipPath\b|\bclip-path=["']url\(/);
     const oversizedSquares = findOversizedSquareIds(releasedSvg);
-    expect(oversizedSquares.moduleSize).toBe(32);
+    expect(oversizedSquares.moduleSize).toBe(27);
     expect(oversizedSquares.ids.length).toBeGreaterThan(0);
     await deleteSquaresAndUnionSvg(inkscapeBin, released, converted, oversizedSquares.ids);
     const finalSvg = await readFile(converted, "utf8");
@@ -98,7 +98,7 @@ describe("Inkscape end-to-end pipeline", () => {
     const sentinel = "<svg>existing</svg>";
     await writeFile(join(outputDirectory, "final", "taken.svg"), sentinel);
     const rows = await runBatch(parseCsv("id,url\ntaken,https://example.com/taken\n"), {
-      csvPath: join(root, "existing.csv"), outputDirectory, concurrency: 1, overwrite: false, diagnostic: false, inkscapeBin, size: 300,
+      csvPath: join(root, "existing.csv"), outputDirectory, concurrency: 1, overwrite: false, diagnostic: false, inkscapeBin, size: 300, errorCorrectionLevel: "M",
     });
     expect(rows[0]?.status).toBe("failed");
     expect(rows[0]?.errorStage).toBe("publish");

@@ -101,7 +101,11 @@ export async function processRecord(
       throw new StageError("publish", `Refusing to overwrite existing ${record.fileName}`);
     }
     log(index, total, record.id, `generating raw/${record.fileName}`);
-    const raw = await atStage("generate", () => generateQrSvg(expectedUrl, options.size));
+    const raw = await atStage("generate", () => generateQrSvg(
+      expectedUrl,
+      options.size,
+      options.errorCorrectionLevel,
+    ));
     await writeFile(rawPath, raw);
     const rawViewBox = readViewBox(raw);
     log(index, total, record.id, "releasing clip paths with Inkscape");

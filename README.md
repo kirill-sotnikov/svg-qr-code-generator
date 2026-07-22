@@ -52,6 +52,7 @@ yarn gen links.csv
 yarn gen input.csv --concurrency 3
 yarn gen input.csv --size 420
 yarn gen input.csv --size=512
+yarn gen input.csv --error-correction-level H
 yarn gen input.csv --output-dir ./result
 yarn gen input.csv --output-dir ./result --overwrite
 yarn gen input.csv --diagnostic
@@ -61,6 +62,7 @@ yarn gen input.csv --diagnostic
 
 - `--concurrency N` — число одновременно обрабатываемых записей и процессов Inkscape, по умолчанию 2, максимум 32;
 - `--size N` или `--size=N` — одинаковые `width` и `height` исходного SVG QR-кода, по умолчанию 300, допустимо 64–4096;
+- `--error-correction-level LEVEL` или `--error-correction-level=LEVEL` — уровень коррекции ошибок QR-кода: `L`, `M`, `Q` или `H`, по умолчанию `Q`;
 - `--output-dir DIR` — фиксированный каталог результата вместо автоматически сформированного;
 - `--overwrite` — разрешить атомарную замену существующих `final/{id}.svg`;
 - `--diagnostic` — сохранить временные каталоги и PNG также для успешных записей.
