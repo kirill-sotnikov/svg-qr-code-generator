@@ -25,34 +25,6 @@ brew install --cask inkscape
 inkscape --version
 ```
 
-Windows с winget (PowerShell):
-
-```powershell
-winget install Inkscape.Inkscape
-inkscape --version
-```
-
-Если каталог Inkscape не добавлен в `PATH`, укажите полный путь:
-
-```powershell
-$env:INKSCAPE_BIN = "C:\Program Files\Inkscape\bin\inkscape.exe"
-```
-
-Ubuntu/Debian:
-
-```bash
-sudo apt update
-sudo apt install inkscape
-inkscape --version
-```
-
-Для нестандартного расположения бинарного файла:
-
-```bash
-export INKSCAPE_BIN=/Applications/Inkscape.app/Contents/MacOS/inkscape
-"$INKSCAPE_BIN" --version
-```
-
 ## CSV
 
 Обязательны заголовки `id,url`:
